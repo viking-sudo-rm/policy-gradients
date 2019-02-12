@@ -19,6 +19,8 @@ class ReverseEnvironment:
         return 0.
 
     def pop(self):
+        self._safe_pop(self._input_buffer)
+
         current_output = self._safe_pop(self._stack)
         self._output_buffer.append(current_output)
         self._num_pops += 1
