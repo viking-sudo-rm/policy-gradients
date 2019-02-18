@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from environment import ReverseEnvironment
+from reverse_environment import ReverseEnvironment
 import random
 
 INPUT_SIZE = 2
