@@ -24,7 +24,7 @@ class LinzenEnvironment:
             if len(self._stack) > 0:
                 self._stack.pop(0)
                 return 0., False
-            return -float("inf"), True
+            return -100, True
 
         return _pop_action
 
@@ -34,13 +34,16 @@ class LinzenEnvironment:
             if len(self._stack) > 0:
                 self._stack[0] = 1 - self._stack[0]
                 return 0., False
-            return -float("inf"), True
+            return -100, True
 
         return _swap_action
 
     def _make_output_action(self, value):
+
         def _output_action():
             return float(value == label), True
+
+        return _output_action
 
 
     """Specific mapping of integers to actions."""
