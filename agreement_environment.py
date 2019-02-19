@@ -17,25 +17,17 @@ class LinzenEnvironment:
 
     return _push_action
 
-  def _make_pop_action(self, value):
+  def _pop_action(self):
+    if len(self._stack) > 0:
+      self._stack.pop(0)
+      return 0., False
+    return -100, True
 
-    def _pop_action():
-      if len(self._stack) > 0:
-        self._stack.pop(0)
-        return 0., False
-      return -100, True
-
-    return _pop_action
-
-  def _make_swap_action(self, value):
-
-    def _swap_action():
-      if len(self._stack) > 0:
-        self._stack[0] = 1 - self._stack[0]
-        return 0., False
-      return -100, True
-
-    return _swap_action
+  def _swap_action(self):
+    if len(self._stack) > 0:
+      self._stack[0] = 1 - self._stack[0]
+      return 0., False
+    return -100, True
 
   def _make_output_action(self, value):
 
@@ -50,10 +42,8 @@ class LinzenEnvironment:
     return [
         self._make_push_action(0),
         self._make_push_action(1),
-        self._make_pop_action(0),
-        self._make_pop_action(1),
-        self._make_swap_action(0),
-        self._make_swap_action(1),
+        self._pop_action,
+        self._swap_action,
         self._make_output_action(0),
         self._make_output_action(1),
     ]

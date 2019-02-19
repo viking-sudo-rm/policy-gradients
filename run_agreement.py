@@ -52,12 +52,8 @@ class Policy(torch.nn.Module):
 
   def forward(self, word, stack):
     embedded = self.embedding(word)
-    print('embedding: ' + str(embedded))
-    print('concatted: ' + str(torch.cat((embedded, stack))))
     output1 = torch.relu(self.l1(torch.cat((embedded, stack))))
-    print('output1: ' + str(output1))
     output2 = torch.softmax(self.l2(output1), -1)
-    print('output2: ' + str(output2))
     return output2
 
 
@@ -90,6 +86,8 @@ def select_action(policy, state):
 def update_policy(policy, optimizer):
   rewards = []
 
+  print("reward history", policy.reward_history)
+
   # Discount future rewards back to the present using gamma
   for i in range(len(policy.reward_batch)):
     rewards.append([])
@@ -98,26 +96,24 @@ def update_policy(policy, optimizer):
       R = r + policy.gamma * R
       rewards[i].insert(0, R)
 
+  # XXX: Need sizes of all these lists to match.
+  max_length = max(len(reward_seq) for reward_seq in rewards)
+  for reward_seq in rewards:
+    num_missing = max_length - len(reward_seq)
+    reward_seq.extend(0. for _ in range(num_missing))
+
+  print("rewards", rewards)
+  print("action history", policy.action_history)
+
   # Scale rewards
   rewards = torch.FloatTensor(rewards)
-  print('pre-scaled rewards', str(rewards))
-  print('rewards.mean', str(rewards.mean()))
-  print('rewards.std', str((rewards.std() + np.finfo(np.float32).eps)))
   rewards = (rewards - rewards.mean()) / \
       (rewards.std() + np.finfo(np.float32).eps)
 
-  # Calculate loss
-  # loss = (torch.sum(torch.matmul(torch.stack(policy.policy_history, dim=0),
-                                #  torch.autograd.Variable(torch.transpose(rewards, 0, 1))).mul(-1), -1))
+  print("policy history", policy.policy_history)
 
+  # XXX: This assumes that all the sequences are the same length.
   loss = torch.sum((torch.stack(policy.policy_history, dim=0) * torch.autograd.Variable(rewards)).mul(-1))
-  print('loss', str(loss))
-  print('rewards', str(rewards))
-  print('policy_history', str(policy.policy_history))
-  # print(policy.policy_history)
-  # print(torch.stack(policy.policy_history, dim=0).shape)
-  # print(torch.transpose(rewards, 0, 1).shape)
-  # print(loss.shape)
 
   # Update network weights
   optimizer.zero_grad()
@@ -165,6 +161,8 @@ def main():
     done = False
     while not done:
       state = env.observe_environment()
+      if state[0] is None:
+        break
 
       action = select_action(policy, state)
       reward, done = env.actions[action]()
