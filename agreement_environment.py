@@ -1,7 +1,7 @@
 class LinzenEnvironment:
 
   def __init__(self, sentence, label):
-    self._sentence = sentence
+    self._sentence = list(sentence)
     self._label = label
     self._char_i = -1
     self._stack = []
