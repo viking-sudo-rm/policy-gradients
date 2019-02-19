@@ -51,7 +51,7 @@ class LinzenEnvironment:
         ]
 
 
-    """Getting new inputs."""
+    """Getting observations of the state space."""
 
     def observe_environment(self):
         """Get an incomplete observation of the input and stack state.
