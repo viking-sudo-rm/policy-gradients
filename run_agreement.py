@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from agreement_environment import LinzenEnvironment
 import random
+
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 from allennlp.data.dataset_readers import DatasetReader
@@ -9,15 +9,17 @@ from allennlp.data import Instance
 from allennlp.data.fields import TextField, LabelField
 from allennlp.data.tokenizers import Token
 
-VOCABULARY_SIZE = 20000
+from agreement_environment import LinzenEnvironment
+
+
+VOCABULARY_SIZE = 12000
 EMBEDDING_SIZE = 50
+HIDDEN_SIZE = 128
 NUM_ACTIONS = len(LinzenEnvironment('', 0).actions)
 GAMMA = 1
-HIDDEN_SIZE = 128
 LEARNING_RATE = 0.01
-NUM_EPISODES = 5000
-INPUT_LENGTH = 10
-BATCH_SIZE = 10
+NUM_EPISODES = 1000000
+BATCH_SIZE = 128
 
 class LinzenDatasetReader(DatasetReader):
   def __init__(self):
@@ -28,7 +30,9 @@ class LinzenDatasetReader(DatasetReader):
     with open(file_path) as f:
       for line in f:
         label = 1 if line[:3] == 'VBP' else 0
-        sent = [Token(word) for word in line[4:].split(' ')]
+        raw_sent = line[4:].strip().split(" ")
+        sent = [Token(word) for word in raw_sent]
+        sent.append(Token("#"))
         yield Instance({"sentence": TextField(sent, self.token_indexers), "label": LabelField(str(label))})
 
 
@@ -66,8 +70,8 @@ def select_action(policy, state):
   if state[1] is not None:
     stack[state[1]] = 1
   stack_var = torch.autograd.Variable(torch.tensor(stack))
-  print('word', str(word_var))
-  print('stack', str(stack_var))
+  # print('word', str(word_var))
+  # print('stack', str(stack_var))
   state = policy(word_var, stack_var)
   
   c = torch.distributions.categorical.Categorical(state)
@@ -86,7 +90,7 @@ def select_action(policy, state):
 def update_policy(policy, optimizer):
   rewards = []
 
-  print("reward history", policy.reward_history)
+  # print("reward history", policy.reward_history)
 
   # Discount future rewards back to the present using gamma
   for i in range(len(policy.reward_batch)):
@@ -98,21 +102,29 @@ def update_policy(policy, optimizer):
 
   # XXX: Need sizes of all these lists to match.
   max_length = max(len(reward_seq) for reward_seq in rewards)
-  for reward_seq in rewards:
+  for i, reward_seq in enumerate(rewards):
     num_missing = max_length - len(reward_seq)
+    this_length = len(reward_seq)
     reward_seq.extend(0. for _ in range(num_missing))
+    padded_history = torch.zeros(max_length)
+    padded_history[:this_length] = policy.policy_history[i]
+    policy.policy_history[i] = padded_history
 
-  print("rewards", rewards)
-  print("action history", policy.action_history)
+  # print("rewards", rewards)
+  # print("action history", policy.action_history)
 
   # Scale rewards
   rewards = torch.FloatTensor(rewards)
+  # Hmm.. should this be row-wise mean???
   rewards = (rewards - rewards.mean()) / \
       (rewards.std() + np.finfo(np.float32).eps)
 
-  print("policy history", policy.policy_history)
+  # print("policy history", policy.policy_history)
 
   # XXX: This assumes that all the sequences are the same length.
+  # loss = 0.
+  # for i, reward in enumerate(rewards):
+  #   loss -= torch.sum(policy.policy_history[i] * torch.autograd.Variable(rewards))
   loss = torch.sum((torch.stack(policy.policy_history, dim=0) * torch.autograd.Variable(rewards)).mul(-1))
 
   # Update network weights
@@ -131,6 +143,7 @@ def update_policy(policy, optimizer):
 
 
 def main():
+  rewards = []
   policy = Policy()
   optimizer = torch.optim.Adam(policy.parameters(), lr=LEARNING_RATE)
   # train_data = open('data/rnn_agr_simple/numpred.train', 'r').readlines()
@@ -152,8 +165,6 @@ def main():
 
     idx = random.randint(0, len(dataset_list) - 1)
     instance = dataset_list[idx]
-    print(instance)
-    print(instance["sentence"][0])
     sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
 
     env = LinzenEnvironment(sentence, int(instance["label"].label))
@@ -171,21 +182,26 @@ def main():
       policy.reward_batch[-1].append(reward)
       policy.action_history[-1].append(action)
 
-    if episode % 10 != 9:
+    reward = np.sum(policy.reward_batch[-1])
+    rewards.append(reward)
+
+    if episode % BATCH_SIZE != BATCH_SIZE - 1:
       continue
 
-    policy_hist = policy.policy_history
-    action_hist = policy.action_history
+    action_history = policy.action_history
     update_policy(policy, optimizer)
-    if episode % 50 == 0:
-      print('Episode {}\tAverage reward: {:.2f}'.format(
-          episode, np.sum(policy.reward_history) / len(policy.reward_history)))
-      # print('Input:  ' + sent)
-      # print('Output: ' + ''.join([env._tensor_to_char(x)
-      #                             for x in env._output_buffer]))
-      # print(policy_hist)
-      # print(action_hist)
-      policy.reward_history = []
+    mean_reward = np.mean(policy.reward_history)
+    policy.reward_history = []
+
+    print("=" * 50)
+    print('Episode {}\tAverage reward: {:.2f}'.format(episode, mean_reward))
+    print('Input:', ' '.join(token.text for token in instance["sentence"]))
+    print("Action History:", [t.item() for t in action_history[-1]])
+    print('Output / Label:', env._output, "/", env._label)
+
+  import matplotlib.pyplot as plt
+  plt.plot([max(0, reward) for reward in rewards])
+  plt.show()
 
 
 if __name__ == '__main__':
