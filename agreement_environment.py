@@ -17,7 +17,7 @@ class LinzenEnvironment:
 
     def _push_action():
       self._stack.insert(0, value)
-      return 0., False
+      return 0, False
 
     return _push_action
 
@@ -25,13 +25,15 @@ class LinzenEnvironment:
     if len(self._stack) > 0:
       self._stack.pop(0)
       return 0., False
-    return -100, True
+    return 0, False
+    # return -100, True
 
   def _swap_action(self):
     if len(self._stack) > 0:
       self._stack[0] = 1 - self._stack[0]
       return 0., False
-    return -100, True
+    return 0, False
+    # return -100, True
 
   # def _make_output_action(self, value):
 
