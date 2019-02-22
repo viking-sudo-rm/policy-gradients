@@ -48,7 +48,8 @@ class LimitedAgreementEnvironment:
     if len(self._stack) > 0:
       self._output.append(self._stack.pop(0))
 
-      reward = float(self._output[-1] == self._labels[self._char_i])
+      reward = float(self._output[-1] == self._labels[self._char_i]
+                     and self._char_i == len(self._sentence) - 1)
       return reward, self._is_done()
     else:
       return 0., self._is_done()
