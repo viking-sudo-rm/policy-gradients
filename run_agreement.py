@@ -10,6 +10,7 @@ from allennlp.data.fields import TextField, LabelField
 from allennlp.data.tokenizers import Token
 
 from agreement_environment import LinzenEnvironment
+import nltk_wrapper
 
 
 VOCABULARY_SIZE = 12000
@@ -41,6 +42,8 @@ class Policy(torch.nn.Module):
     super(Policy, self).__init__()
 
     self.embedding = torch.nn.Embedding(VOCABULARY_SIZE, EMBEDDING_SIZE)
+    self.lstm_cell = torch.nn.LSTMCell(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
+    self.h, self.c = None, None
     self.l1 = torch.nn.Linear(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
     self.l2 = torch.nn.Linear(HIDDEN_SIZE, NUM_ACTIONS)
 
@@ -56,9 +59,17 @@ class Policy(torch.nn.Module):
 
   def forward(self, word, stack):
     embedded = self.embedding(word)
-    output1 = torch.relu(self.l1(torch.cat((embedded, stack))))
+    observation = torch.cat([embedded, stack])
+    self.h, self.c = self.lstm_cell(observation.unsqueeze(0), [self.h, self.c])
+    output1 = self.h.squeeze(0)
+    # output1 = torch.relu(self.l1(state))
     output2 = torch.softmax(self.l2(output1), -1)
     return output2
+
+  def init_state(self):
+    self.h = torch.zeros(1, HIDDEN_SIZE)
+    self.c = torch.zeros(1, HIDDEN_SIZE)
+    # pass
 
 
 def select_action(policy, state):
@@ -141,22 +152,40 @@ def update_policy(policy, optimizer):
   policy.action_history = []
 
 
+def filter_x(word):
+  if word == "N0":
+    return 0
+  elif word == "N1":
+    return 1
+  else:
+    return 2
+
+
+def filter_y(word):
+  if word == "V0":
+    return 0
+  elif word == "V1":
+    return 1
+  else:
+    return 2
+
 
 def main():
-  rewards = []
-  policy = Policy()
-  optimizer = torch.optim.Adam(policy.parameters(), lr=LEARNING_RATE)
-  # train_data = open('data/rnn_agr_simple/numpred.train', 'r').readlines()
-  # X = [sent[4:] for sent in train_data]
-  # Y = [0 if sent[:3] == 'VBZ' else 1 for sent in train_data]
-  # vocab = Vocabulary.from_instances(X)
-  # indexer = SingleIdTokenIndexer()
+
+  grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
+
+  # sents = list(nltk_wrapper.generate(grammar, depth=3))
+  # x_sents = [[filter_x(word) for word in sent] for sent in sents]
+  # y_sents = [[filter_y(word) for word in sent] for sent in sents]
 
   reader = LinzenDatasetReader()
   dataset = reader.read('data/rnn_agr_simple/numpred.train')
   vocab = Vocabulary.from_instances(dataset)
-
   dataset_list = list(iter(dataset))
+
+  rewards = []
+  policy = Policy()
+  optimizer = torch.optim.Adam(policy.parameters(), lr=LEARNING_RATE)
 
   for episode in range(NUM_EPISODES):
     policy.policy_history.append(torch.autograd.Variable(torch.Tensor()))
@@ -168,6 +197,7 @@ def main():
     sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
 
     env = LinzenEnvironment(sentence, int(instance["label"].label))
+    policy.init_state()
 
     done = False
     while not done:

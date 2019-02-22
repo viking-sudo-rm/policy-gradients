@@ -85,7 +85,3 @@ class LinzenEnvironment:
     """Return 0, 1, or None depending on the top of the stack."""
     if len(self._stack) > 0:
       return self._stack[0]
-
-  # def _are_chars_exhausted(self):
-  #     # For now, match inputs to actions. Don't need to do this in principle.
-  #     return self._char_i >= len(self._sentence)
