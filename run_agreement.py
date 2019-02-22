@@ -10,13 +10,14 @@ from allennlp.data.fields import TextField, LabelField
 from allennlp.data.tokenizers import Token
 
 from agreement_environment import LinzenEnvironment
+from limited_agreement_environment import LimitedAgreementEnvironment
 import nltk_wrapper
 
 
 VOCABULARY_SIZE = 12000
 EMBEDDING_SIZE = 50
 HIDDEN_SIZE = 128
-NUM_ACTIONS = len(LinzenEnvironment('', 0).actions)
+NUM_ACTIONS = len(LimitedAgreementEnvironment([], []).actions)
 GAMMA = 1
 LEARNING_RATE = 0.01
 NUM_EPISODES = 1000000
@@ -42,8 +43,8 @@ class Policy(torch.nn.Module):
     super(Policy, self).__init__()
 
     self.embedding = torch.nn.Embedding(VOCABULARY_SIZE, EMBEDDING_SIZE)
-    self.lstm_cell = torch.nn.LSTMCell(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
-    self.h, self.c = None, None
+    # self.lstm_cell = torch.nn.LSTMCell(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
+    # self.h, self.c = None, None
     self.l1 = torch.nn.Linear(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
     self.l2 = torch.nn.Linear(HIDDEN_SIZE, NUM_ACTIONS)
 
@@ -60,16 +61,16 @@ class Policy(torch.nn.Module):
   def forward(self, word, stack):
     embedded = self.embedding(word)
     observation = torch.cat([embedded, stack])
-    self.h, self.c = self.lstm_cell(observation.unsqueeze(0), [self.h, self.c])
-    output1 = self.h.squeeze(0)
-    # output1 = torch.relu(self.l1(state))
+    # self.h, self.c = self.lstm_cell(observation.unsqueeze(0), [self.h, self.c])
+    # output1 = self.h.squeeze(0)
+    output1 = torch.relu(self.l1(observation))
     output2 = torch.softmax(self.l2(output1), -1)
     return output2
 
   def init_state(self):
-    self.h = torch.zeros(1, HIDDEN_SIZE)
-    self.c = torch.zeros(1, HIDDEN_SIZE)
-    # pass
+    # self.h = torch.zeros(1, HIDDEN_SIZE)
+    # self.c = torch.zeros(1, HIDDEN_SIZE)
+    pass
 
 
 def select_action(policy, state):
@@ -173,15 +174,14 @@ def filter_y(word):
 def main():
 
   grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
+  sents = list(nltk_wrapper.generate(grammar, depth=5))
+  x_sents = [[filter_x(word) for word in sent] for sent in sents]
+  y_sents = [[filter_y(word) for word in sent] for sent in sents]
 
-  # sents = list(nltk_wrapper.generate(grammar, depth=3))
-  # x_sents = [[filter_x(word) for word in sent] for sent in sents]
-  # y_sents = [[filter_y(word) for word in sent] for sent in sents]
-
-  reader = LinzenDatasetReader()
-  dataset = reader.read('data/rnn_agr_simple/numpred.train')
-  vocab = Vocabulary.from_instances(dataset)
-  dataset_list = list(iter(dataset))
+  # reader = LinzenDatasetReader()
+  # dataset = reader.read('data/rnn_agr_simple/numpred.train')
+  # vocab = Vocabulary.from_instances(dataset)
+  # dataset_list = list(iter(dataset))
 
   rewards = []
   policy = Policy()
@@ -192,13 +192,16 @@ def main():
     policy.reward_batch.append([])
     policy.action_history.append([])
 
-    idx = random.randint(0, len(dataset_list) - 1)
-    instance = dataset_list[idx]
-    sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
+    # idx = random.randint(0, len(dataset_list) - 1)
+    # instance = dataset_list[idx]
+    # sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
+    # env = LinzenEnvironment(sentence, int(instance["label"].label))
 
-    env = LinzenEnvironment(sentence, int(instance["label"].label))
+    idx = random.randint(0, len(x_sents) - 1)
+    x_sent, y_sent = x_sents[idx], y_sents[idx]
+    env = LimitedAgreementEnvironment(x_sent, y_sent)
+
     policy.init_state()
-
     done = False
     while not done:
       state = env.observe_environment()
@@ -225,9 +228,10 @@ def main():
 
     print("=" * 50)
     print('Episode {}\tAverage reward: {:.2f}'.format(episode, mean_reward))
-    print('Input:', ' '.join(token.text for token in instance["sentence"]))
+    # print('Input:', ' '.join(token.text for token in instance["sentence"]))
+    print("Input:", " ".join(str(char) for char in x_sent))
     print("Action History:", [t.item() for t in action_history[-1]])
-    print('Output / Label:', env._output, "/", env._label)
+    # print('Output / Label:', env._output, "/", env._label)
 
   import matplotlib.pyplot as plt
   plt.plot([max(0, reward) for reward in rewards])
