@@ -1,4 +1,4 @@
-class LinzenEnvironment:
+class LimitedAgreementEnvironment:
 
   def __init__(self, sentence, labels):
     self._sentence = list(sentence)
