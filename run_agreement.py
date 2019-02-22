@@ -230,6 +230,7 @@ def main():
     print('Episode {}\tAverage reward: {:.2f}'.format(episode, mean_reward))
     # print('Input:', ' '.join(token.text for token in instance["sentence"]))
     print("Input:", " ".join(str(char) for char in x_sent))
+    print("Output", " ".join(str(char) for char in env._output))
     print("Action History:", [t.item() for t in action_history[-1]])
     # print('Output / Label:', env._output, "/", env._label)
 

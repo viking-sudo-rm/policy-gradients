@@ -1,0 +1,12 @@
+S ->
+S -> "N0" S "V0"
+S -> "N1" S "V1"
+S -> S S
+
+S -> S S1
+S -> S1 S
+S -> S S2
+S -> S1 S2
+S -> S2 S1
+S1 -> S
+S2 -> S
