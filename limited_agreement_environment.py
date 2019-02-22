@@ -11,28 +11,28 @@ class LimitedAgreementEnvironment:
   """Generic declarations for types of actions."""
 
   def _pass_action(self):
-    return 0., False
+    return 0., self._is_done()
 
   def _make_push_action(self, value):
 
     def _push_action():
       self._stack.insert(0, value)
-      return 0, False
+      return 0, self._is_done()
 
     return _push_action
 
   def _pop_action(self):
     if len(self._stack) > 0:
       self._stack.pop(0)
-      return 0., False
-    return 0, False
+      return 0., self._is_done()
+    return 0, self._is_done()
     # return -100, True
 
   def _swap_action(self):
     if len(self._stack) > 0:
       self._stack[0] = 1 - self._stack[0]
-      return 0., False
-    return 0, False
+      return 0., self._is_done()
+    return 0, self._is_done()
     # return -100, True
 
   # def _make_output_action(self, value):
@@ -47,13 +47,11 @@ class LimitedAgreementEnvironment:
     #   return -100, True
     if len(self._stack) > 0:
       self._output = self._stack.pop(0)
-      if len(self._labels) > 0:
-        reward = float(self._output == self._labels.pop(0))
-      else:
-        raise Exception()
-      return reward, len(self._labels) == 0
+
+      reward = float(self._output == self._labels[self._char_i])
+      return reward, self._is_done()
     else:
-      return 0., len(self._labels) == 0
+      return 0., self._is_done()
 
   """Specific mapping of integers to actions."""
 
@@ -88,6 +86,9 @@ class LimitedAgreementEnvironment:
     """Return 0, 1, or None depending on the top of the stack."""
     if len(self._stack) > 0:
       return self._stack[0]
+
+  def _is_done(self):
+    return self._char_i == len(self._sentence) - 1
 
   # def _are_chars_exhausted(self):
   #     # For now, match inputs to actions. Don't need to do this in principle.
