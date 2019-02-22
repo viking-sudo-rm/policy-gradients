@@ -10,8 +10,7 @@ from allennlp.data.fields import TextField, LabelField
 from allennlp.data.tokenizers import Token
 
 from agreement_environment import LinzenEnvironment
-from limited_agreement_environment import LimitedAgreementEnvironment
-import nltk_wrapper
+from limited_agreement_environment import LimitedAgreementEnvironment, LimitedAgreementDataset
 
 
 VOCABULARY_SIZE = 12000
@@ -85,7 +84,7 @@ def select_action(policy, state):
   # print('word', str(word_var))
   # print('stack', str(stack_var))
   state = policy(word_var, stack_var)
-  
+
   c = torch.distributions.categorical.Categorical(state)
   # print(state)
   action = c.sample()
@@ -153,25 +152,12 @@ def update_policy(policy, optimizer):
   policy.action_history = []
 
 
-def filter_x(word):
-  if word == "N0":
-    return 0
-  elif word == "N1":
-    return 1
-  else:
-    return 2
 
-
-def filter_y(word):
-  if word == "V0":
-    return 0
-  elif word == "V1":
-    return 1
-  else:
-    return 2
 
 
 def main():
+
+  dataset = LimitedAgreementDataset()
 
   grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
   sents = list(nltk_wrapper.generate(grammar, depth=5))
@@ -197,9 +183,7 @@ def main():
     # sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
     # env = LinzenEnvironment(sentence, int(instance["label"].label))
 
-    idx = random.randint(0, len(x_sents) - 1)
-    x_sent, y_sent = x_sents[idx], y_sents[idx]
-    env = LimitedAgreementEnvironment(x_sent, y_sent)
+    env = dataset.get_env()
 
     policy.init_state()
     done = False

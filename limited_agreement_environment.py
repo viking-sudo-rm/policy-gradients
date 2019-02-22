@@ -1,3 +1,5 @@
+import nltk_wrapper
+
 class LimitedAgreementEnvironment:
 
   def __init__(self, sentence, labels):
@@ -94,3 +96,31 @@ class LimitedAgreementEnvironment:
   # def _are_chars_exhausted(self):
   #     # For now, match inputs to actions. Don't need to do this in principle.
   #     return self._char_i >= len(self._sentence)
+
+class LimitedAgreementDataset:
+    def __init__(self):
+        self.grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
+        self.sents = list(nltk_wrapper.generate(self.grammar, depth=5))
+        self.x_sents = [[self.filter_x(word) for word in sent] for sent in self.sents]
+        self.y_sents = [[self.filter_y(word) for word in sent] for sent in self.sents]
+
+    def get_env(self):
+        idx = random.randint(0, len(self.x_sents) - 1)
+        x_sent, y_sent = self.x_sents[idx], self.y_sents[idx]
+        return LimitedAgreementEnvironment(x_sent, y_sent)
+
+    def filter_x(self, word):
+      if word == "N0":
+        return 0
+      elif word == "N1":
+        return 1
+      else:
+        return 2
+
+    def filter_y(self, word):
+      if word == "V0":
+        return 0
+      elif word == "V1":
+        return 1
+      else:
+        return 2
