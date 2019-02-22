@@ -16,10 +16,17 @@ class LinzenEnvironment:
     self._char_i = -1
     self._stack = []
     self.actions = self._make_actions()
+    self._correct_predictions = 0
 
   @property
   def output(self):
-      return "{} ({})".format(str(self._output), str(self._label))
+    return "{} ({})".format(str(self._output), str(self._label))
+
+  @property
+  def accuracy(self):
+    # for now, there is only one label per sentence, so there is only
+    # one prediction to be made
+    return int(self._correct_predictions > 0)
 
   """Generic declarations for types of actions."""
 
@@ -30,7 +37,7 @@ class LinzenEnvironment:
 
     def _push_action():
       self._stack.insert(0, value)
-      return 0, False
+      return -0.05*len(self._stack), False
 
     return _push_action
 
@@ -49,7 +56,11 @@ class LinzenEnvironment:
   def _output_action(self):
     if len(self._stack) > 0:
       self._output = self._stack[0]
-      reward = float(self._stack[0] == self._label)
+      if self._stack[0] == self._label:
+        self._correct_predictions += 1
+        reward = 1
+      else:
+        reward = 0
       return reward, True
     else:
       return 0., True

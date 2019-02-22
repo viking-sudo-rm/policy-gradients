@@ -35,6 +35,7 @@ class Policy(torch.nn.Module):
     self.policy_history = []
     self.reward_batch = []
     self.action_history = []
+    self.accuracy_history = []
 
     # Overall reward and loss history
     self.reward_history = []
@@ -129,14 +130,14 @@ def update_policy(policy, optimizer):
   policy.policy_history = []
   policy.reward_batch = []
   policy.action_history = []
-
+  policy.accuracy_history = []
 
 def main():
 
   dataset = LinzenDataset()
 
   rewards = []
-  policy = Policy(len(dataset.get_env().actions), lstm_on=False)
+  policy = Policy(len(dataset.get_env().actions), lstm_on=True)
   optimizer = torch.optim.Adam(policy.parameters(), lr=LEARNING_RATE)
 
   for episode in range(NUM_EPISODES):
@@ -159,6 +160,7 @@ def main():
       # Save reward
       policy.reward_batch[-1].append(reward)
       policy.action_history[-1].append(action)
+      policy.accuracy_history.append(env.accuracy)
 
     reward = np.sum(policy.reward_batch[-1])
     rewards.append(reward)
@@ -167,12 +169,13 @@ def main():
       continue
 
     action_history = policy.action_history
+    mean_accuracy = np.mean(policy.accuracy_history)
     update_policy(policy, optimizer)
     mean_reward = np.mean(policy.reward_history)
     policy.reward_history = []
 
     print("=" * 50)
-    print('Episode {}\tAverage reward: {:.2f}'.format(episode, mean_reward))
+    print('Episode {}\tAverage reward: {:.2f}\tAccuracy: {:.2f}'.format(episode, mean_reward, mean_accuracy))
     # print('Input:', ' '.join(token.text for token in instance["sentence"]))
     print("Input:", dataset.input_string)
     print("Output (correct)", env.output)
