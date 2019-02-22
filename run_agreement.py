@@ -2,50 +2,32 @@ import torch
 import numpy as np
 import random
 
-from allennlp.data.vocabulary import Vocabulary
-from allennlp.data.token_indexers import SingleIdTokenIndexer
-from allennlp.data.dataset_readers import DatasetReader
-from allennlp.data import Instance
-from allennlp.data.fields import TextField, LabelField
-from allennlp.data.tokenizers import Token
-
-from agreement_environment import LinzenEnvironment
-from limited_agreement_environment import LimitedAgreementEnvironment, LimitedAgreementDataset
+from agreement_environment import LinzenDataset
+from limited_agreement_environment import LimitedAgreementDataset
 
 
 VOCABULARY_SIZE = 12000
 EMBEDDING_SIZE = 50
 HIDDEN_SIZE = 128
-NUM_ACTIONS = len(LimitedAgreementEnvironment([], []).actions)
 GAMMA = 1
 LEARNING_RATE = 0.01
 NUM_EPISODES = 1000000
 BATCH_SIZE = 128
 
-class LinzenDatasetReader(DatasetReader):
-  def __init__(self):
-    super().__init__(lazy=False)
-    self.token_indexers = {"tokens": SingleIdTokenIndexer()}
-
-  def _read(self, file_path):
-    with open(file_path) as f:
-      for line in f:
-        label = 1 if line[:3] == 'VBP' else 0
-        raw_sent = line[4:].strip().split(" ")
-        sent = [Token(word) for word in raw_sent]
-        sent.append(Token("#"))
-        yield Instance({"sentence": TextField(sent, self.token_indexers), "label": LabelField(str(label))})
-
 
 class Policy(torch.nn.Module):
-  def __init__(self):
+  def __init__(self, num_actions, lstm_on=False):
     super(Policy, self).__init__()
 
+    self._lstm_on = lstm_on
     self.embedding = torch.nn.Embedding(VOCABULARY_SIZE, EMBEDDING_SIZE)
-    # self.lstm_cell = torch.nn.LSTMCell(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
-    # self.h, self.c = None, None
-    self.l1 = torch.nn.Linear(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
-    self.l2 = torch.nn.Linear(HIDDEN_SIZE, NUM_ACTIONS)
+
+    if self._lstm_on:
+      self.lstm_cell = torch.nn.LSTMCell(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
+      self.h, self.c = None, None
+    else:
+      self.l1 = torch.nn.Linear(EMBEDDING_SIZE + 2, HIDDEN_SIZE)
+    self.l2 = torch.nn.Linear(HIDDEN_SIZE, num_actions)
 
     self.gamma = GAMMA
 
@@ -60,16 +42,18 @@ class Policy(torch.nn.Module):
   def forward(self, word, stack):
     embedded = self.embedding(word)
     observation = torch.cat([embedded, stack])
-    # self.h, self.c = self.lstm_cell(observation.unsqueeze(0), [self.h, self.c])
-    # output1 = self.h.squeeze(0)
-    output1 = torch.relu(self.l1(observation))
+    if self._lstm_on:
+      self.h, self.c = self.lstm_cell(observation.unsqueeze(0), [self.h, self.c])
+      output1 = self.h.squeeze(0)
+    else:
+      output1 = torch.relu(self.l1(observation))
     output2 = torch.softmax(self.l2(output1), -1)
     return output2
 
   def init_state(self):
-    # self.h = torch.zeros(1, HIDDEN_SIZE)
-    # self.c = torch.zeros(1, HIDDEN_SIZE)
-    pass
+    if self._lstm_on:
+      self.h = torch.zeros(1, HIDDEN_SIZE)
+      self.c = torch.zeros(1, HIDDEN_SIZE)
 
 
 def select_action(policy, state):
@@ -111,7 +95,6 @@ def update_policy(policy, optimizer):
       R = r + policy.gamma * R
       rewards[i].insert(0, R)
 
-  # XXX: Need sizes of all these lists to match.
   max_length = max(len(reward_seq) for reward_seq in rewards)
   for i, reward_seq in enumerate(rewards):
     num_missing = max_length - len(reward_seq)
@@ -126,16 +109,12 @@ def update_policy(policy, optimizer):
 
   # Scale rewards
   rewards = torch.FloatTensor(rewards)
-  # Hmm.. should this be row-wise mean???
+  # TODO:  Hmm.. should this be row-wise mean???
   rewards = (rewards - rewards.mean()) / \
       (rewards.std() + np.finfo(np.float32).eps)
 
   # print("policy history", policy.policy_history)
 
-  # XXX: This assumes that all the sequences are the same length.
-  # loss = 0.
-  # for i, reward in enumerate(rewards):
-  #   loss -= torch.sum(policy.policy_history[i] * torch.autograd.Variable(rewards))
   loss = torch.sum((torch.stack(policy.policy_history, dim=0) * torch.autograd.Variable(rewards)).mul(-1))
 
   # Update network weights
@@ -152,36 +131,18 @@ def update_policy(policy, optimizer):
   policy.action_history = []
 
 
-
-
-
 def main():
 
-  dataset = LimitedAgreementDataset()
-
-  grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
-  sents = list(nltk_wrapper.generate(grammar, depth=5))
-  x_sents = [[filter_x(word) for word in sent] for sent in sents]
-  y_sents = [[filter_y(word) for word in sent] for sent in sents]
-
-  # reader = LinzenDatasetReader()
-  # dataset = reader.read('data/rnn_agr_simple/numpred.train')
-  # vocab = Vocabulary.from_instances(dataset)
-  # dataset_list = list(iter(dataset))
+  dataset = LinzenDataset()
 
   rewards = []
-  policy = Policy()
+  policy = Policy(len(dataset.get_env().actions), lstm_on=False)
   optimizer = torch.optim.Adam(policy.parameters(), lr=LEARNING_RATE)
 
   for episode in range(NUM_EPISODES):
     policy.policy_history.append(torch.autograd.Variable(torch.Tensor()))
     policy.reward_batch.append([])
     policy.action_history.append([])
-
-    # idx = random.randint(0, len(dataset_list) - 1)
-    # instance = dataset_list[idx]
-    # sentence = [vocab.get_token_index(str(token)) for token in instance["sentence"]]
-    # env = LinzenEnvironment(sentence, int(instance["label"].label))
 
     env = dataset.get_env()
 
@@ -213,10 +174,10 @@ def main():
     print("=" * 50)
     print('Episode {}\tAverage reward: {:.2f}'.format(episode, mean_reward))
     # print('Input:', ' '.join(token.text for token in instance["sentence"]))
-    print("Input:", " ".join(str(char) for char in x_sent))
-    print("Output", " ".join(str(char) for char in env._output))
+    print("Input:", dataset.input_string)
+    print("Output (correct)", env.output)
     print("Action History:", [t.item() for t in action_history[-1]])
-    # print('Output / Label:', env._output, "/", env._label)
+    #print('Output / Label:', env._output, "/", env._label)
 
   import matplotlib.pyplot as plt
   plt.plot([max(0, reward) for reward in rewards])

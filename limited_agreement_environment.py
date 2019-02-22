@@ -1,14 +1,20 @@
 import nltk_wrapper
+import random
 
 class LimitedAgreementEnvironment:
 
-  def __init__(self, sentence, labels):
+  def __init__(self, sentence, labels, ignore_middle_verbs=True):
     self._sentence = list(sentence)
     self._output = []
     self._labels = list(labels)
     self._char_i = -1
     self._stack = []
     self.actions = self._make_actions()
+    self._ignore_middle_verbs = ignore_middle_verbs
+
+  @property
+  def output(self):
+    return " ".join(str(char) for char in self._output)
 
   """Generic declarations for types of actions."""
 
@@ -35,23 +41,14 @@ class LimitedAgreementEnvironment:
       self._stack[0] = 1 - self._stack[0]
       return 0., self._is_done()
     return 0, self._is_done()
-    # return -100, True
-
-  # def _make_output_action(self, value):
-
-  #   def _output_action():
-  #     return float(value == self._label), True
-
-  #   return _output_action
 
   def _output_action(self):
-    # if self._char_i != len(self._sentence) - 1:
-    #   return -100, True
     if len(self._stack) > 0:
       self._output.append(self._stack.pop(0))
 
+      should_ignore = self._ignore_middle_verbs and self._char_i != len(self._sentence) - 1
       reward = float(self._output[-1] == self._labels[self._char_i]
-                     and self._char_i == len(self._sentence) - 1)
+                     and not should_ignore)
       return reward, self._is_done()
     else:
       return 0., self._is_done()
@@ -93,21 +90,28 @@ class LimitedAgreementEnvironment:
   def _is_done(self):
     return self._char_i == len(self._sentence) - 1
 
-  # def _are_chars_exhausted(self):
-  #     # For now, match inputs to actions. Don't need to do this in principle.
-  #     return self._char_i >= len(self._sentence)
-
 class LimitedAgreementDataset:
-    def __init__(self):
+    def __init__(self, ignore_middle_verbs=True, depth=5):
         self.grammar = nltk_wrapper.load_grammar("grammars/simple-agreement.grammar")
-        self.sents = list(nltk_wrapper.generate(self.grammar, depth=5))
+        self.sents = list(nltk_wrapper.generate(self.grammar, depth=depth))
+        self.x_sent = None
+        self.y_sent = None
         self.x_sents = [[self.filter_x(word) for word in sent] for sent in self.sents]
         self.y_sents = [[self.filter_y(word) for word in sent] for sent in self.sents]
+        self._ignore_middle_verbs = ignore_middle_verbs
 
     def get_env(self):
         idx = random.randint(0, len(self.x_sents) - 1)
-        x_sent, y_sent = self.x_sents[idx], self.y_sents[idx]
-        return LimitedAgreementEnvironment(x_sent, y_sent)
+        self.x_sent, self.y_sent = self.x_sents[idx], self.y_sents[idx]
+        return LimitedAgreementEnvironment(self.x_sent, self.y_sent, self._ignore_middle_verbs)
+
+    @property
+    def input_string(self):
+        return " ".join(str(char) for char in self.x_sent)
+
+    @property
+    def label(self):
+        return " ".join(str(char) for char in self.y_sent)
 
     def filter_x(self, word):
       if word == "N0":

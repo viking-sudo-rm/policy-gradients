@@ -1,3 +1,12 @@
+import random
+
+from allennlp.data.vocabulary import Vocabulary
+from allennlp.data.token_indexers import SingleIdTokenIndexer
+from allennlp.data.dataset_readers import DatasetReader
+from allennlp.data import Instance
+from allennlp.data.fields import TextField, LabelField
+from allennlp.data.tokenizers import Token
+
 class LinzenEnvironment:
 
   def __init__(self, sentence, label):
@@ -7,6 +16,10 @@ class LinzenEnvironment:
     self._char_i = -1
     self._stack = []
     self.actions = self._make_actions()
+
+  @property
+  def output(self):
+      return "{} ({})".format(str(self._output), str(self._label))
 
   """Generic declarations for types of actions."""
 
@@ -26,25 +39,14 @@ class LinzenEnvironment:
       self._stack.pop(0)
       return 0., False
     return 0, False
-    # return -100, True
 
   def _swap_action(self):
     if len(self._stack) > 0:
       self._stack[0] = 1 - self._stack[0]
       return 0., False
     return 0, False
-    # return -100, True
-
-  # def _make_output_action(self, value):
-
-  #   def _output_action():
-  #     return float(value == self._label), True
-
-  #   return _output_action
 
   def _output_action(self):
-    # if self._char_i != len(self._sentence) - 1:
-    #   return -100, True
     if len(self._stack) > 0:
       self._output = self._stack[0]
       reward = float(self._stack[0] == self._label)
@@ -85,3 +87,41 @@ class LinzenEnvironment:
     """Return 0, 1, or None depending on the top of the stack."""
     if len(self._stack) > 0:
       return self._stack[0]
+
+class LinzenDatasetReader(DatasetReader):
+  def __init__(self):
+    super().__init__(lazy=False)
+    self.token_indexers = {"tokens": SingleIdTokenIndexer()}
+
+  def _read(self, file_path):
+    with open(file_path) as f:
+      for line in f:
+        label = 1 if line[:3] == 'VBP' else 0
+        raw_sent = line[4:].strip().split(" ")
+        sent = [Token(word) for word in raw_sent]
+        sent.append(Token("#"))
+        yield Instance({"sentence": TextField(sent, self.token_indexers), "label": LabelField(str(label))})
+
+class LinzenDataset:
+    def __init__(self):
+        self.reader = LinzenDatasetReader()
+        self.dataset = self.reader.read('data/rnn_agr_simple/numpred.train')
+        self.vocab = Vocabulary.from_instances(self.dataset)
+        self.dataset_list = list(iter(self.dataset))
+        self.instance = None
+        self._label = None
+
+    def get_env(self):
+        idx = random.randint(0, len(self.dataset_list) - 1)
+        self.instance = self.dataset_list[idx]
+        sentence = [self.vocab.get_token_index(str(token)) for token in self.instance["sentence"]]
+        self._label = int(self.instance["label"].label)
+        return LinzenEnvironment(sentence, self._label)
+
+    @property
+    def input_string(self):
+        return ' '.join(token.text for token in self.instance["sentence"])
+
+    @property
+    def label(self):
+        return str(self._label)
